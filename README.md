@@ -1,7 +1,7 @@
 
 ```markdown
 # **Smart Task Analyzer**
-📌 *Django + DRF Project for Singularium Internship Assignment*
+📌 *Django + DRF Project for Internship Assignment*
 
 A priority-scoring task analysis tool built with **Django**, **Django REST Framework**, and a simple **HTML/CSS/JS** frontend.  
 It evaluates tasks using urgency, importance, effort, and dependency factors.
