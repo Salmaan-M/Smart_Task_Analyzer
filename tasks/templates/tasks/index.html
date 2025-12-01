@@ -1,0 +1,365 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Smart Task Analyzer</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+
+    <style>
+        * { box-sizing: border-box; }
+        body {
+            font-family: Arial, sans-serif;
+            margin: 0;
+            padding: 20px;
+            background: #f4f5fb;
+        }
+        h1 {
+            margin-bottom: 10px;
+            font-size: 28px;
+        }
+        .subtitle {
+            color: #555;
+            margin-bottom: 20px;
+        }
+        .layout {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 20px;
+        }
+        .card {
+            background: #fff;
+            border-radius: 8px;
+            padding: 16px;
+            box-shadow: 0 1px 4px rgba(0,0,0,0.08);
+            flex: 1 1 320px;
+        }
+        label {
+            display: block;
+            font-size: 0.9rem;
+            margin-top: 8px;
+        }
+        input, textarea, select {
+            width: 100%;
+            padding: 6px 8px;
+            margin-top: 4px;
+            border-radius: 4px;
+            border: 1px solid #ccc;
+            font-size: 0.9rem;
+        }
+        textarea {
+            resize: vertical;
+            min-height: 120px;
+        }
+        .btn {
+            display: inline-block;
+            padding: 8px 14px;
+            margin-top: 12px;
+            border: none;
+            border-radius: 4px;
+            background: #2563eb;
+            color: #fff;
+            font-size: 0.9rem;
+            cursor: pointer;
+        }
+        .btn.secondary {
+            background: #6b7280;
+        }
+        .btn-group button {
+            margin-right: 6px;
+            margin-top: 6px;
+        }
+        .btn.active {
+            background: #16a34a !important;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 12px;
+            font-size: 0.9rem;
+        }
+        th, td {
+            border: 1px solid #e5e7eb;
+            padding: 8px;
+            text-align: left;
+        }
+        th {
+            background: #f3f4f6;
+        }
+
+        tr.high-priority {
+            background: #dcfce7;
+        }
+        tr.medium-priority {
+            background: #fef9c3;
+        }
+        tr.low-priority {
+            background: #fee2e2;
+        }
+
+        .badge {
+            display: inline-block;
+            padding: 2px 6px;
+            border-radius: 999px;
+            font-size: 0.75rem;
+        }
+        .badge.high { background: #16a34a; color: white; }
+        .badge.medium { background: #eab308; color: black; }
+        .badge.low { background: #dc2626; color: white; }
+
+        @media (max-width: 768px) {
+            table { font-size: 0.8rem; }
+            th, td { padding: 6px; }
+        }
+    </style>
+</head>
+
+<body>
+    <h1>Smart Task Analyzer</h1>
+    <p class="subtitle">
+        Enter tasks and analyze them based on <b>urgency</b>, <b>importance</b>, <b>effort</b>, and <b>dependencies</b>.
+    </p>
+
+    <div class="layout">
+        <!-- Single-task form -->
+        <div class="card">
+            <h3>Single Task Input</h3>
+
+            <label>Title
+                <input type="text" id="title" placeholder="Finish report">
+            </label>
+
+            <label>Due date & time
+                <input type="datetime-local" id="due_date">
+            </label>
+
+            <label>Estimated hours
+                <input type="number" id="hours" step="0.25" min="0.25" value="1">
+            </label>
+
+            <label>Importance (1–10)
+                <input type="number" id="importance" min="1" max="10" value="5">
+            </label>
+
+            <label>Dependencies (IDs separated by commas)
+                <input type="text" id="dependencies" placeholder="e.g. 1,3">
+            </label>
+
+            <button class="btn" onclick="addTask()">Add to Task List</button>
+        </div>
+
+        <!-- Bulk JSON input -->
+        <div class="card">
+            <h3>Bulk JSON Input</h3>
+<textarea id="bulkJson">[
+  {
+    "title": "Study Django",
+    "due_date": "2030-01-01T10:00",
+    "estimated_hours": 5,
+    "importance": 9,
+    "dependencies": []
+  }
+]</textarea>
+            <button class="btn secondary" onclick="clearBulk()">Clear JSON</button>
+        </div>
+    </div>
+
+    <div class="card" style="margin-top:20px;">
+        <h3>Task List & Analysis</h3>
+
+        <div class="btn-group">
+            <button id="sort-smart" class="btn active" onclick="setSortMode('smart')">Smart Balance</button>
+            <button id="sort-fast" class="btn secondary" onclick="setSortMode('fast')">Fastest Wins</button>
+            <button id="sort-impact" class="btn secondary" onclick="setSortMode('impact')">High Impact</button>
+            <button id="sort-deadline" class="btn secondary" onclick="setSortMode('deadline')">Deadline Driven</button>
+        </div>
+
+        <button class="btn" style="margin-left:10px;" onclick="analyze()">Analyze</button>
+        <button class="btn secondary" style="margin-left:6px;" onclick="suggestTop()">Get Top 3 Suggestions</button>
+
+        <div id="errorBox" style="color:#dc2626; margin-top:10px;"></div>
+        <div id="suggestionsBox" style="margin-top:10px; font-size:0.9rem;"></div>
+
+        <table id="resultsTable">
+            <thead>
+                <tr>
+                    <th>#</th>
+                    <th>Title</th>
+                    <th>Score</th>
+                    <th>Priority</th>
+                    <th>Due</th>
+                    <th>Hours</th>
+                    <th>Importance</th>
+                    <th>Dependencies</th>
+                </tr>
+            </thead>
+            <tbody id="resultsBody"></tbody>
+        </table>
+    </div>
+
+<script>
+let currentSortMode = 'smart';
+let localTasks = [];
+let lastResults = [];
+
+// Add single task
+function addTask() {
+    const title = document.getElementById("title").value.trim();
+    const due = document.getElementById("due_date").value;
+    const hours = parseFloat(document.getElementById("hours").value);
+    const importance = parseInt(document.getElementById("importance").value);
+    const deps = document.getElementById("dependencies").value.trim();
+
+    if (!title || !due || !hours || !importance) {
+        showError("Fill all fields: title, due date, hours, importance.");
+        return;
+    }
+
+    let depList = [];
+    if (deps.length > 0) {
+        depList = deps.split(",").map(x => parseInt(x.trim())).filter(x => !isNaN(x));
+    }
+
+    localTasks.push({
+        title,
+        due_date: due,
+        estimated_hours: hours,
+        importance,
+        dependencies: depList
+    });
+
+    alert("Task added to list!");
+    showError("");
+}
+
+// Clear bulk JSON
+function clearBulk() {
+    document.getElementById("bulkJson").value = "[]";
+}
+
+function setSortMode(mode) {
+    currentSortMode = mode;
+
+    document.querySelectorAll(".btn-group .btn").forEach(btn =>
+        btn.classList.remove("active")
+    );
+
+    document.getElementById("sort-" + mode).classList.add("active");
+
+    renderTable();
+}
+
+function showError(msg) {
+    document.getElementById("errorBox").innerHTML = msg;
+}
+
+async function analyze() {
+    showError("");
+    const raw = document.getElementById("bulkJson").value;
+
+    let bulkTasks = [];
+    try {
+        bulkTasks = JSON.parse(raw);
+    } catch (e) {
+        showError("Invalid JSON: " + e.message);
+        return;
+    }
+
+    const payload = [...localTasks, ...bulkTasks];
+
+    if (payload.length === 0) {
+        showError("No tasks to analyze!");
+        return;
+    }
+
+    const res = await fetch("/api/tasks/analyze/", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload)
+    });
+
+    const data = await res.json();
+
+    if (!res.ok) {
+        showError("API error: " + JSON.stringify(data));
+        return;
+    }
+
+    lastResults = data;
+    renderTable();
+}
+
+function renderTable() {
+    const tbody = document.getElementById("resultsBody");
+    tbody.innerHTML = "";
+
+    if (lastResults.length === 0) return;
+
+    let items = [...lastResults];
+
+    if (currentSortMode === "fast") {
+        items.sort((a, b) => a.estimated_hours - b.estimated_hours);
+    } 
+    else if (currentSortMode === "impact") {
+        items.sort((a, b) => b.importance - a.importance);
+    }
+    else if (currentSortMode === "deadline") {
+        items.sort((a, b) => new Date(a.due_date) - new Date(b.due_date));
+    }
+    else {
+        items.sort((a, b) => b.score - a.score); // smart
+    }
+
+    items.forEach((t, i) => {
+        let priority = "medium";
+        if (t.score >= 8) priority = "high";
+        else if (t.score <= 5) priority = "low";
+
+        const row = document.createElement("tr");
+        row.className = priority + "-priority";
+
+        row.innerHTML = `
+            <td>${i + 1}</td>
+            <td>${t.title}</td>
+            <td>${t.score.toFixed(2)}</td>
+            <td><span class="badge ${priority}">${priority.toUpperCase()}</span></td>
+            <td>${t.due_date}</td>
+            <td>${t.estimated_hours}</td>
+            <td>${t.importance}</td>
+            <td>${t.dependencies.length ? t.dependencies.join(", ") : "-"}</td>
+        `;
+
+        tbody.appendChild(row);
+    });
+}
+
+async function suggestTop() {
+    showError("");
+    const box = document.getElementById("suggestionsBox");
+    box.innerHTML = "Loading suggestions...";
+
+    const res = await fetch("/api/tasks/suggest/");
+    const data = await res.json();
+
+    if (!res.ok) {
+        showError(data.detail || "Suggest API error.");
+        box.innerHTML = "";
+        return;
+    }
+
+    let html = "<b>Top 3 Suggested Tasks:</b><ul>";
+
+    data.forEach(t => {
+        html += `<li>
+            <b>${t.title}</b> – score ${t.score.toFixed(2)}<br>
+            ${t.explanation}
+        </li><br>`;
+    });
+
+    html += "</ul>";
+    box.innerHTML = html;
+}
+</script>
+
+</body>
+</html>
